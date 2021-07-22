@@ -17,6 +17,10 @@
 
 ziti_dir=/opt/netfoundry/ziti
 service=$(basename $(readlink -f "${0}"))
+# use alternate ziti directory if last hyphenated word in service name is a subdirectory
+# e.g. if ${service} is ziti-tunnel-v7 and /opt/netfoundry/ziti-v7 exists then use it for ziti_dir
+variant=$(echo "${service}" | awk -F- '{print $NF}')
+test -d "${ziti_dir}-${variant}" && ziti_dir="${ziti_dir}-${variant}"
 logfile="/var/log/${service}.log"
 pidfile="/var/run/${service}.pid"
 cfgfile="${ziti_dir}/cfg/${service}.json"
