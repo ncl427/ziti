@@ -18,6 +18,13 @@ package fabric
 
 import (
 	"fmt"
+	fabric_rest_client "github.com/openziti/fabric/rest_client"
+	"github.com/openziti/fabric/rest_client/link"
+	"github.com/openziti/fabric/rest_client/router"
+	"github.com/openziti/fabric/rest_client/service"
+	"github.com/openziti/fabric/rest_client/terminator"
+	"github.com/openziti/fabric/rest_model"
+	"github.com/openziti/foundation/util/stringz"
 	"strings"
 
 	"github.com/Jeffail/gabs"
@@ -105,7 +112,7 @@ func outputCircuits(o *api.Options, children []*gabs.Container, pagingInfo *api.
 	for _, entity := range children {
 		id := api.GetJsonString(entity, "id")
 		client := api.GetJsonString(entity, "clientId")
-		service := api.GetJsonString(entity, "service.name")
+		serviceName := api.GetJsonString(entity, "service.name")
 
 		path := strings.Builder{}
 
@@ -131,7 +138,7 @@ func outputCircuits(o *api.Options, children []*gabs.Container, pagingInfo *api.
 			}
 		}
 
-		t.AppendRow(table.Row{id, client, service, path.String()})
+		t.AppendRow(table.Row{id, client, serviceName, path.String()})
 	}
 
 	api.RenderTable(o, t, pagingInfo)
@@ -167,18 +174,16 @@ func getEntityRef(c *gabs.Container) ([]*entityRef, error) {
 }
 
 func runListLinks(o *api.Options) error {
-	children, pagingInfo, err := listEntitiesWithOptions("links", o)
-	if err != nil {
-		return err
-	}
-	return outputLinks(o, children, pagingInfo)
+	return WithFabricClient(o, func(client *fabric_rest_client.ZitiFabric) error {
+		result, err := client.Link.ListLinks(&link.ListLinksParams{
+			//Filter:  o.GetFilter(),
+			Context: o.GetContext(),
+		})
+		return outputResult(result, err, o, outputLinks)
+	})
 }
 
-func outputLinks(o *api.Options, children []*gabs.Container, pagingInfo *api.Paging) error {
-	if o.OutputJSONResponse {
-		return nil
-	}
-
+func outputLinks(o *api.Options, results *link.ListLinksOK) error {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleRounded)
 	columnConfigs := []table.ColumnConfig{
@@ -189,16 +194,16 @@ func outputLinks(o *api.Options, children []*gabs.Container, pagingInfo *api.Pag
 	t.SetColumnConfigs(columnConfigs)
 	t.AppendHeader(table.Row{"ID", "Dialer", "Acceptor", "Static Cost", "Src Latency", "Dst Latency", "State", "Status", "Full Cost"})
 
-	for _, entity := range children {
-		id := entity.Path("id").Data().(string)
-		srcRouter := entity.Path("sourceRouter.name").Data().(string)
-		dstRouter := entity.Path("destRouter.name").Data().(string)
-		staticCost := entity.Path("staticCost").Data().(float64)
-		srcLatency := entity.Path("sourceLatency").Data().(float64) / 1_000_000
-		dstLatency := entity.Path("destLatency").Data().(float64) / 1_000_000
-		state := entity.Path("state").Data().(string)
-		down := entity.Path("down").Data().(bool)
-		cost := entity.Path("cost").Data().(float64)
+	for _, entity := range results.Payload.Data {
+		id := valOrDefault(entity.ID)
+		srcRouter := entity.SourceRouter.Name
+		dstRouter := entity.DestRouter.Name
+		staticCost := valOrDefault(entity.StaticCost)
+		srcLatency := float64(valOrDefault(entity.SourceLatency)) / 1_000_000
+		dstLatency := float64(valOrDefault(entity.DestLatency)) / 1_000_000
+		state := valOrDefault(entity.State)
+		down := valOrDefault(entity.Down)
+		cost := valOrDefault(entity.Cost)
 
 		status := "up"
 		if down {
@@ -211,118 +216,134 @@ func outputLinks(o *api.Options, children []*gabs.Container, pagingInfo *api.Pag
 			state, status, cost})
 	}
 
-	api.RenderTable(o, t, pagingInfo)
+	api.RenderTable(o, t, getPaging(results.Payload.Meta))
 
 	return nil
 }
 
 func runListTerminators(o *api.Options) error {
-	children, pagingInfo, err := listEntitiesWithOptions("terminators", o)
-	if err != nil {
-		return err
-	}
-	return outputTerminators(o, children, pagingInfo)
+	return WithFabricClient(o, func(client *fabric_rest_client.ZitiFabric) error {
+		result, err := client.Terminator.ListTerminators(&terminator.ListTerminatorsParams{
+			Filter:  o.GetFilter(),
+			Context: o.GetContext(),
+		})
+		return outputResult(result, err, o, outputTerminators)
+	})
 }
 
-func outputTerminators(o *api.Options, children []*gabs.Container, pagingInfo *api.Paging) error {
-	if o.OutputJSONResponse {
-		return nil
-	}
-
+func outputTerminators(o *api.Options, result *terminator.ListTerminatorsOK) error {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleRounded)
 	t.AppendHeader(table.Row{"ID", "Service", "Router", "Binding", "Address", "Identity", "Cost", "Precedence", "Dynamic Cost"})
 
-	for _, entity := range children {
-		id, _ := entity.Path("id").Data().(string)
-		service := entity.Path("service.name").Data().(string)
-		router := entity.Path("router.name").Data().(string)
-		binding := entity.Path("binding").Data().(string)
-		address := entity.Path("address").Data().(string)
-		identity := entity.Path("identity").Data().(string)
-		staticCost := entity.Path("cost").Data().(float64)
-		precedence := entity.Path("precedence").Data().(string)
-		dynamicCost := entity.Path("dynamicCost").Data().(float64)
+	for _, entity := range result.Payload.Data {
+		id := valOrDefault(entity.ID)
+		serviceName := entity.Service.Name
+		routerName := entity.Router.Name
+		binding := valOrDefault(entity.Binding)
+		address := valOrDefault(entity.Address)
+		identity := valOrDefault(entity.Identity)
+		staticCost := valOrDefault(entity.Cost)
+		precedence := valOrDefault(entity.Precedence)
+		dynamicCost := valOrDefault(entity.DynamicCost)
 
-		t.AppendRow(table.Row{id, service, router, binding, address, identity, staticCost, precedence, dynamicCost})
+		t.AppendRow(table.Row{id, serviceName, routerName, binding, address, identity, staticCost, precedence, dynamicCost})
 	}
-	api.RenderTable(o, t, pagingInfo)
+
+	api.RenderTable(o, t, getPaging(result.Payload.Meta))
 	return nil
 }
 
 func runListServices(o *api.Options) error {
-	children, pagingInfo, err := listEntitiesWithOptions("services", o)
-	if err != nil {
-		return err
-	}
-	return outputServices(o, children, pagingInfo)
+	return WithFabricClient(o, func(client *fabric_rest_client.ZitiFabric) error {
+		result, err := client.Service.ListServices(&service.ListServicesParams{
+			Filter:  o.GetFilter(),
+			Context: o.GetContext(),
+		})
+		return outputResult(result, err, o, outputServices)
+	})
 }
 
-func outputServices(o *api.Options, children []*gabs.Container, pagingInfo *api.Paging) error {
-	if o.OutputJSONResponse {
-		return nil
-	}
-
+func outputServices(o *api.Options, result *service.ListServicesOK) error {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleRounded)
 	t.AppendHeader(table.Row{"ID", "Name", "Terminator Strategy"})
 
-	for _, entity := range children {
-		id := entity.Path("id").Data().(string)
-		name := entity.Path("name").Data().(string)
-		terminatorStrategy, _ := entity.Path("terminatorStrategy").Data().(string)
-		t.AppendRow(table.Row{id, name, terminatorStrategy})
+	for _, entity := range result.Payload.Data {
+		t.AppendRow(table.Row{
+			valOrDefault(entity.ID),
+			valOrDefault(entity.Name),
+			valOrDefault(entity.TerminatorStrategy),
+		})
 	}
 
-	api.RenderTable(o, t, pagingInfo)
+	api.RenderTable(o, t, getPaging(result.Payload.Meta))
 
 	return nil
 }
 
 func runListRouters(o *api.Options) error {
-	children, pagingInfo, err := listEntitiesWithOptions("routers", o)
-	if err != nil {
-		return err
-	}
-	return outputRouters(o, children, pagingInfo)
+	return WithFabricClient(o, func(client *fabric_rest_client.ZitiFabric) error {
+		result, err := client.Router.ListRouters(&router.ListRoutersParams{
+			Filter:  o.GetFilter(),
+			Context: o.GetContext(),
+		})
+		return outputResult(result, err, o, outputRouters)
+	})
 }
 
-func outputRouters(o *api.Options, children []*gabs.Container, pagingInfo *api.Paging) error {
-	if o.OutputJSONResponse {
-		return nil
-	}
-
+func outputRouters(o *api.Options, result *router.ListRoutersOK) error {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleRounded)
 	t.AppendHeader(table.Row{"ID", "Name", "Online", "Cost", "No Traversal", "Version", "Listeners"})
 
-	for _, entity := range children {
-		id := entity.Path("id").Data().(string)
-		name := entity.Path("name").Data().(string)
-		connected := entity.Path("connected").Data().(bool)
-		cost := entity.Path("cost").Data().(float64)
-		versionInfo := entity.Path("versionInfo")
-		noTraversal := entity.Path("noTraversal").Data().(bool)
+	for _, entity := range result.Payload.Data {
 		var version string
-		if versionInfo != nil {
-			v := versionInfo.Path("version").Data().(string)
-			os := versionInfo.Path("os").Data().(string)
-			arch := versionInfo.Path("arch").Data().(string)
-			version = fmt.Sprintf("%v on %v/%v", v, os, arch)
+		if versionInfo := entity.VersionInfo; versionInfo != nil {
+			version = fmt.Sprintf("%v on %v/%v", versionInfo.Version, versionInfo.Os, versionInfo.Arch)
 		}
 		var listeners []string
-		listenerAddresses := entity.Path("listenerAddresses")
-		if listenerAddresses != nil {
-			children, _ := listenerAddresses.Children()
-			for idx, child := range children {
-				addr := child.Path("address").Data().(string)
-				listeners = append(listeners, fmt.Sprintf("%v: %v", idx+1, addr))
-			}
+		for idx, listenerAddr := range entity.ListenerAddresses {
+			addr := stringz.OrEmpty(listenerAddr.Address)
+			listeners = append(listeners, fmt.Sprintf("%v: %v", idx+1, addr))
 		}
-		t.AppendRow(table.Row{id, name, connected, cost, noTraversal, version, strings.Join(listeners, "\n")})
+		t.AppendRow(table.Row{
+			valOrDefault(entity.ID),
+			valOrDefault(entity.Name),
+			valOrDefault(entity.Connected),
+			valOrDefault(entity.Cost),
+			valOrDefault(entity.NoTraversal),
+			version,
+			strings.Join(listeners, "\n")})
 	}
 
-	api.RenderTable(o, t, pagingInfo)
+	api.RenderTable(o, t, getPaging(result.Payload.Meta))
 
 	return nil
+}
+
+func getPaging(meta *rest_model.Meta) *api.Paging {
+	return &api.Paging{
+		Limit:  *meta.Pagination.Limit,
+		Offset: *meta.Pagination.Offset,
+		Count:  *meta.Pagination.TotalCount,
+	}
+}
+
+func outputResult[T any](val T, err error, o *api.Options, f func(o *api.Options, val T) error) error {
+	if err != nil {
+		return err
+	}
+	if o.OutputJSONResponse {
+		return nil
+	}
+	return f(o, val)
+}
+
+func valOrDefault[V any, T *V](val T) V {
+	var result V
+	if val != nil {
+		result = *val
+	}
+	return result
 }
