@@ -30,21 +30,40 @@ import (
 	"time"
 )
 
+var ctrlAddress string
+var hostingRouterName string
+var bindHostAddress string
+
+func init() {
+	ctrlAddress = os.Getenv("ZITI_CTRL_ADDRESS")
+	if ctrlAddress == "" {
+		ctrlAddress = "https://ziti-edge-controller:1280"
+	}
+	hostingRouterName = os.Getenv("ZITI_HOSTING_ROUTER_NAME")
+	if hostingRouterName == "" {
+		hostingRouterName = "ziti-edge-router"
+	}
+	bindHostAddress = os.Getenv("ZITI_BIND_HOST_ADDRESS")
+	if bindHostAddress == "" {
+		bindHostAddress = "web-test-blue"
+	}
+}
+
 func TestSimpleWebService(t *testing.T) {
 
 	ctrlUsername := "admin"
 	ctrlPassword := "admin"
 	testerUsername := "gotester"
-	ctrlAddress := "https://ziti-edge-controller:1280"
-	hostingRouterName := "ziti-edge-router"
 	dialAddress := "simple.web.smoke.test"
 	dialPort := 80
-	bindHostAddress := "web-test"
 	bindHostPort := 8000
 	serviceName := "basic.web.smoke.test.service"
 
-	// Ensure the controller is reachable
-	waitForController(ctrlAddress)
+	// Ensure the controller is reachable, timeout if it takes more than 30 seconds
+	fmt.Println("Checking for controller (" + ctrlAddress + ")")
+	if waitForController(ctrlAddress, 30*time.Second) == false {
+		log.Fatalf("Timed out waiting for controller response")
+	}
 
 	// Authenticate with the controller
 	caCerts, err := rest_util.GetControllerWellKnownCas(ctrlAddress)
@@ -487,14 +506,18 @@ func deleteServicePolicyByID(client *rest_management_api_client.ZitiEdgeManageme
 	return resp
 }
 
-func waitForController(hostport string) {
+func waitForController(hostport string, timeout time.Duration) bool {
+	startTime := time.Now()
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	for {
 		resp, _ := http.Get(hostport)
 		if resp != nil && resp.StatusCode == 200 {
-			break
+			return true
+		}
+		if time.Since(startTime) >= timeout {
+			return false
 		}
 		time.Sleep(1 * time.Second)
-		fmt.Println("Waiting for controller...")
+		fmt.Println("Waiting for controller at " + hostport + "...")
 	}
 }

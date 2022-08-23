@@ -106,24 +106,13 @@ Ziti Edge Router:
     routerName=edge-router; docker run -d --name "${zitinw}-${routerName}" --rm -e ZITI_EDGE_ROUTER_RAWNAME="${routerName}" --volume "${zitinw_shared}":/openziti/shared -it --network="${zitinw}" --hostname "${routerName}" --network-alias="${routerName}" --rm openziti/quickstart /openziti/scripts/run-router.sh edge
 
 # Testing The Quickstarts Locally
-1. Start up the appropriate environment using docker
-   1. For isolated docker-compose
-      1. Simply run `docker-compose up` from the [quickstart docker directory](quickstart/docker)
-   2. For Host it anywhere docker-compose
-      1. Edit the `.env` file to use an external DNS (for example, your localhost)
-
-             ZITI_EDGE_CONTROLLER_HOSTNAME=<your-local-hostname>
-             ZITI_EDGE_CTRL_ADVERTISED_HOST_PORT=<your-local-hostname>:1280
-      2. Run `docker-compose up` from the [quickstart docker directory](quickstart/docker)
-1. In the `TestSimpleWebService` test in [quickstart_test.go](quickstart/quickstart_test.go), update the following test variables with your network details. The values shown are the defaults for testing the docker quickstart deployment.
-   1. ctrlUsername := "admin"
-   2. ctrlPassword := "admin"
-   3. ctrlAddress := "https://ziti-edge-controller:1280"
-   4. hostingRouterName := "ziti-edge-router"
-   5. dialPort := 80
-   6. bindHostAddress := "web-test-blue"
-   7. bindHostPort := 8000
-   8. Run the `TestSimpleWebService` test
+1. Start up the appropriate environment, the test environment currently expects one controller, one router, and one hosted web server
+2. Set the environment variables as needed
+   * ZITI_CTRL_ADDRESS - The address and port of the controller
+   * ZITI_HOSTING_ROUTER_NAME - The name of the router to host the service
+   * ZITI_BIND_HOST_ADDRESS - The address of the web server to bind the service to
+   * There are others that can be changed manually in the test as well but are typically the same in test environments.
+3. Run the `TestSimpleWebService` test
 
           go test <relative-path-to-quickstart-folder> -v -run TestSimpleWebService
 
