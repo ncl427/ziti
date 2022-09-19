@@ -2,6 +2,10 @@ module github.com/openziti/ziti
 
 go 1.18
 
+replace github.com/openziti/edge => /home/ncl427/zitiDEV2/edge
+replace github.com/openziti/fabric => /home/ncl427/zitiDEV2/fabric
+
+
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/Jeffail/gabs/v2 v2.6.1
